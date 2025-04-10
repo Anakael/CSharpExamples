@@ -1,4 +1,7 @@
+using System.Reflection;
+using Dumpify;
 using FluentValidation.Results;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace TestActionFilter;
@@ -8,9 +11,11 @@ namespace TestActionFilter;
 public class TestActionFilter : ControllerBase
 {
     [HttpPut]
-    [Validate<LolModel>]
-    [Validate<LolModelAnother>]
-    public void Test([FromQuery] LolModelAnother filter, [FromBody] LolModel model) { }
+    [UseValidationFilter]
+    public void Test(
+        [FromQuery, Validate] LolModelAnother filter,
+        [FromBody, Validate] LolModel model
+    ) { }
 }
 
 public record LolModel(int LolInt, string LolString);
@@ -34,33 +39,41 @@ public class LolModelAnotherValidator : AbstractValidator<LolModelAnother>
     }
 }
 
-public class ValidationFilterService<T>(IValidator<T> validator) : IActionFilter
-    where T : class
+public class UseValidationFilter: ActionFilterAttribute
 {
-    private readonly IValidator<T> _validator = validator;
-
-    public void OnActionExecuting(ActionExecutingContext context)
+    public override void OnActionExecuting(ActionExecutingContext context)
     {
-        if (
-            context.ActionArguments.Values.FirstOrDefault(x => x?.GetType() == typeof(T))
-            is not T argument
-        )
+        Type validatorBaseType = typeof(IValidator<>);
+        IEnumerable<ControllerParameterDescriptor> parameters = context
+            .ActionDescriptor.Parameters.OfType<ControllerParameterDescriptor>()
+            .Where(x => x.ParameterInfo.IsDefined(typeof(ValidateAttribute)));
+        foreach (ControllerParameterDescriptor param in parameters)
         {
-            throw new Exception("No parameter to validate");
-        }
+            Type validatorType = validatorBaseType.MakeGenericType(param.ParameterType);
 
-        ValidationResult result = _validator.Validate(argument);
-        if (result.IsValid)
-        {
-            return;
-        }
+            object? service = context.HttpContext.RequestServices.GetService(validatorType);
+            if (service is null)
+            {
+                continue;
+            }
 
-        Results.ValidationProblem(result.ToDictionary()).ExecuteAsync(context.HttpContext);
-        context.Result = new EmptyResult();
+            object? paramValue = context.ActionArguments[param.Name];
+            ValidationResult result = (ValidationResult)
+                validatorType
+                    .GetMethod(nameof(IValidator.Validate))!
+                    .Invoke(service, [paramValue])!;
+            if (result.IsValid)
+            {
+                continue;
+            }
+
+            Results.ValidationProblem(result.ToDictionary()).ExecuteAsync(context.HttpContext);
+            context.Result = new EmptyResult();
+        }
     }
 
-    public void OnActionExecuted(ActionExecutedContext context) { }
+    public override void OnActionExecuted(ActionExecutedContext context) { }
 }
 
-public class ValidateAttribute<T> : ServiceFilterAttribute<ValidationFilterService<T>>
-    where T : class;
+[AttributeUsage(AttributeTargets.Parameter)]
+public class ValidateAttribute : Attribute;

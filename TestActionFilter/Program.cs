@@ -3,8 +3,8 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddValidatorsFromAssemblyContaining<LolModelValidator>();
-builder.Services.AddScoped(typeof(ValidationFilterService<>));
 
+builder.Services.Configure<ApiBehaviorOptions>(x => x.SuppressModelStateInvalidFilter = true);
 builder.Services.AddControllers();
 
 WebApplication app = builder.Build();
