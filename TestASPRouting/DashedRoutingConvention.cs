@@ -14,7 +14,7 @@ public partial class DashedRoutingConvention : IControllerModelConvention
         {
             if (controllerSelector.AttributeRouteModel is null)
             {
-                return;
+                continue;
             }
 
             controllerSelector.AttributeRouteModel.Template =
@@ -30,7 +30,7 @@ public partial class DashedRoutingConvention : IControllerModelConvention
             {
                 if (actionSelector.AttributeRouteModel is null)
                 {
-                    return;
+                    continue;
                 }
 
                 actionSelector.AttributeRouteModel.Template =
